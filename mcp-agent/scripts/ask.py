@@ -1,0 +1,1 @@
+"""Submit one equipment request."""
