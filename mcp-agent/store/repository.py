@@ -221,3 +221,64 @@ def insert_context_package(
         connection.execute("ROLLBACK")
         raise
     return package_id
+
+
+def insert_audit(
+    connection: sqlite3.Connection,
+    *,
+    request_id: int,
+    actor: str,
+    action: str,
+    detail: str,
+) -> int:
+    cursor = connection.execute(
+        """
+        INSERT INTO audit_log (request_id, actor, action, detail, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (request_id, actor, action, detail, _timestamp()),
+    )
+    connection.commit()
+    return int(cursor.lastrowid)
+
+
+def list_audit_log(connection: sqlite3.Connection, request_id: int) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT actor, action, detail
+        FROM audit_log
+        WHERE request_id = ?
+        ORDER BY id
+        """,
+        (request_id,),
+    ).fetchall()
+
+
+def insert_review(
+    connection: sqlite3.Connection,
+    *,
+    employee_id: str,
+    request: str,
+    reason: str,
+    package_hash: str,
+) -> int:
+    cursor = connection.execute(
+        """
+        INSERT INTO review_queue (
+            employee_id, request, reason, package_hash, status, created_at
+        ) VALUES (?, ?, ?, ?, 'open', ?)
+        """,
+        (employee_id, request, reason, package_hash, _timestamp()),
+    )
+    connection.commit()
+    return int(cursor.lastrowid)
+
+
+def list_reviews(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT id, employee_id, request, reason, package_hash, status
+        FROM review_queue
+        ORDER BY id
+        """
+    ).fetchall()
