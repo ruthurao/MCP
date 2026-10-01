@@ -108,3 +108,116 @@ def claim_next(connection: sqlite3.Connection) -> sqlite3.Row | None:
         "SELECT * FROM requests WHERE id = ?",
         (row["id"],),
     ).fetchone()
+
+
+def get_request(connection: sqlite3.Connection, request_id: int) -> sqlite3.Row | None:
+    return connection.execute(
+        "SELECT * FROM requests WHERE id = ?",
+        (request_id,),
+    ).fetchone()
+
+
+def list_employees(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT employee_id, name, role, start_date
+        FROM employees
+        ORDER BY employee_id
+        """
+    ).fetchall()
+
+
+def list_all_equipment(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT id, employee_id, item, issued_on
+        FROM equipment
+        ORDER BY id
+        """
+    ).fetchall()
+
+
+def list_all_policies(connection: sqlite3.Connection) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT id, role, item, max_count, refresh_years, effective_from, effective_to
+        FROM policies
+        ORDER BY id
+        """
+    ).fetchall()
+
+
+def get_context_package(
+    connection: sqlite3.Connection, request_id: int
+) -> sqlite3.Row | None:
+    return connection.execute(
+        "SELECT * FROM context_packages WHERE request_id = ?",
+        (request_id,),
+    ).fetchone()
+
+
+def list_context_decisions(
+    connection: sqlite3.Connection, package_id: int
+) -> list[sqlite3.Row]:
+    return connection.execute(
+        """
+        SELECT memory_id, memory_kind, outcome, reason_code
+        FROM context_decisions
+        WHERE package_id = ?
+        ORDER BY memory_id
+        """,
+        (package_id,),
+    ).fetchall()
+
+
+def insert_context_package(
+    connection: sqlite3.Connection,
+    *,
+    request_id: int,
+    canonical_json: str,
+    content_hash: str,
+    conflict: bool,
+    decisions: list[tuple[str, str, str, str]],
+) -> int:
+    now = _timestamp()
+    if connection.in_transaction:
+        connection.commit()
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        existing = connection.execute(
+            "SELECT id FROM context_packages WHERE request_id = ?",
+            (request_id,),
+        ).fetchone()
+        if existing is not None:
+            connection.execute("COMMIT")
+            return int(existing["id"])
+        cursor = connection.execute(
+            """
+            INSERT INTO context_packages (
+                request_id, canonical_json, content_hash, conflict, built_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (request_id, canonical_json, content_hash, int(conflict), now),
+        )
+        package_id = int(cursor.lastrowid)
+        connection.executemany(
+            """
+            INSERT INTO context_decisions (
+                package_id, memory_id, memory_kind, outcome, reason_code
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            [(package_id, *decision) for decision in decisions],
+        )
+        connection.execute(
+            """
+            UPDATE requests
+            SET context_hash = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (content_hash, now, request_id),
+        )
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
+    return package_id
