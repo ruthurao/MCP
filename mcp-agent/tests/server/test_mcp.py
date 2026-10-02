@@ -71,6 +71,7 @@ def test_stdio_returns_the_request_subject(tmp_path: Path) -> None:
         "employee_id": "E1001",
         "role": "ic",
         "start_date": "2021-03-01",
+        "tenure": "5 years",
         "equipment": [
             {"item": "laptop", "issued_on": "2021-04-01"},
             {"item": "monitor", "issued_on": "2024-11-01"},

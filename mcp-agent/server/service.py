@@ -22,12 +22,14 @@ def get_employee_info(
         if fact["kind"] == "equipment"
     ]
     found = subject is not None and subject["employee_id"] == employee_id
+    request = repository.get_request(connection, request_id)
     result = (
         {
             "found": True,
             "employee_id": subject["employee_id"],
             "role": subject["role"],
             "start_date": subject["start_date"],
+            "tenure": _tenure(subject["start_date"], request["submitted_on"]),
             "equipment": equipment,
         }
         if found
@@ -176,6 +178,18 @@ def _included_employee(package: dict) -> dict | None:
         if fact["kind"] == "employee":
             return fact
     return None
+
+
+def _tenure(start: str, on: str) -> str:
+    start_year, start_month, start_day = (int(part) for part in start.split("-"))
+    on_year, on_month, on_day = (int(part) for part in on.split("-"))
+    years = on_year - start_year
+    if (on_month, on_day) < (start_month, start_day):
+        years -= 1
+    if years < 0:
+        years = 0
+    unit = "year" if years == 1 else "years"
+    return f"{years} {unit}"
 
 
 def _add_years(iso_date: str, years: int) -> str:

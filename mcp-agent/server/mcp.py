@@ -24,6 +24,7 @@ class EmployeeInfo(TypedDict, total=False):
     employee_id: str
     role: str
     start_date: str
+    tenure: str
     equipment: list[IssuedEquipment]
 
 
@@ -71,7 +72,7 @@ def build_server(db_path: str, request_id: int) -> MCPServer:
 
     @mcp.tool()
     def get_employee_info(employee_id: str) -> EmployeeInfo:
-        """Role, start date, and equipment when this id is the request subject."""
+        """Role, tenure, start date, and equipment when this id is the request subject."""
         return call(
             lambda connection: service.get_employee_info(
                 connection, request_id, employee_id

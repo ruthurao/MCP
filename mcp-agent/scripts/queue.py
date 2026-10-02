@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> None:
         print("queue empty")
         return
     for row in claimed:
-        print(f"{row['id']} running")
+        print(f"{row['id']} {row['status']}")
         print(row["trace"])
 
 

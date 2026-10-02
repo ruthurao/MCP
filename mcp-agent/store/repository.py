@@ -129,6 +129,38 @@ def save_trace(connection: sqlite3.Connection, request_id: int, trace: str) -> N
     connection.commit()
 
 
+def update_request(
+    connection: sqlite3.Connection,
+    request_id: int,
+    *,
+    status: str,
+    trace: str,
+    attempt: int,
+    last_error: str | None,
+    decision: str | None,
+) -> None:
+    connection.execute(
+        """
+        UPDATE requests
+        SET status = ?, trace = ?, attempt = ?, last_error = ?, decision = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (status, trace, attempt, last_error, decision, _timestamp(), request_id),
+    )
+    connection.commit()
+
+
+def get_review(connection: sqlite3.Connection, review_id: int) -> sqlite3.Row | None:
+    return connection.execute(
+        """
+        SELECT id, employee_id, request, reason, package_hash, status
+        FROM review_queue
+        WHERE id = ?
+        """,
+        (review_id,),
+    ).fetchone()
+
+
 def list_employees(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     return connection.execute(
         """

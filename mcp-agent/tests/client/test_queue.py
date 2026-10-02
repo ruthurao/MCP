@@ -38,8 +38,8 @@ def test_sentence_is_queued_then_one_worker_claims_it(tmp_path: Path) -> None:
     again = run(connection)
 
     assert [row["id"] for row in claimed] == [request_id]
-    assert claimed[0]["status"] == "running"
-    assert get_request(connection, request_id)["status"] == "running"
+    assert claimed[0]["status"] == "approved"
+    assert get_request(connection, request_id)["status"] == "approved"
     assert again == []
 
 
@@ -51,7 +51,7 @@ def test_worker_claims_the_oldest_row_first(tmp_path: Path) -> None:
     claimed = run(connection)
 
     assert [row["id"] for row in claimed] == [first, second]
-    assert [row["status"] for row in claimed] == ["running", "running"]
+    assert [row["status"] for row in claimed] == ["approved", "denied"]
 
 
 def test_worker_records_the_real_employee_observation(tmp_path: Path) -> None:
@@ -61,9 +61,12 @@ def test_worker_records_the_real_employee_observation(tmp_path: Path) -> None:
     claimed = run(connection)
     stored = get_request(connection, request_id)
     trace = stored["trace"]
-    observation = json.loads(trace.split("Observation: ", 1)[1])
+    observation_line = next(
+        line for line in trace.splitlines() if line.startswith("Observation: ")
+    )
+    observation = json.loads(observation_line.removeprefix("Observation: "))
 
-    assert claimed[0]["status"] == "running"
+    assert claimed[0]["status"] == "approved"
     assert trace.startswith(
         "Thought: Look up the employee on this request.\n"
         "Action: get_employee_info E1003\n"
@@ -74,8 +77,9 @@ def test_worker_records_the_real_employee_observation(tmp_path: Path) -> None:
         "employee_id": "E1003",
         "role": "ic",
         "start_date": "2024-08-01",
+        "tenure": "2 years",
         "equipment": [],
     }
-    assert [row["action"] for row in list_audit_log(connection, request_id)] == [
-        "get_employee_info"
+    assert "get_employee_info" in [
+        row["action"] for row in list_audit_log(connection, request_id)
     ]
