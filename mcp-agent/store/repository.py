@@ -117,6 +117,18 @@ def get_request(connection: sqlite3.Connection, request_id: int) -> sqlite3.Row 
     ).fetchone()
 
 
+def save_trace(connection: sqlite3.Connection, request_id: int, trace: str) -> None:
+    connection.execute(
+        """
+        UPDATE requests
+        SET trace = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (trace, _timestamp(), request_id),
+    )
+    connection.commit()
+
+
 def list_employees(connection: sqlite3.Connection) -> list[sqlite3.Row]:
     return connection.execute(
         """

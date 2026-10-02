@@ -30,6 +30,7 @@ def main(argv: list[str] | None = None) -> None:
         return
     for row in claimed:
         print(f"{row['id']} running")
+        print(row["trace"])
 
 
 if __name__ == "__main__":
