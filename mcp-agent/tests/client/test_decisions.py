@@ -4,8 +4,10 @@ from pathlib import Path
 
 from client.intake import open_database, submit
 from client.worker import run
+from tests.client.scripted_model import scripted_model
 from server.context import build_package
-from store.repository import get_request, list_audit_log, list_reviews
+from server.reviews import log_path, read_entries
+from store.repository import get_request, list_audit_log
 
 
 def _bad_proposal(db_path: str, row) -> tuple[str, dict]:
@@ -25,16 +27,16 @@ def test_stolen_laptop_and_unknown_item_escalate(tmp_path: Path) -> None:
     stolen = submit(connection, "E1002: My laptop was stolen. I need a replacement.")
     tablet = submit(connection, "E1003: I need a drawing tablet for design work.")
 
-    finished = run(connection)
+    finished = run(connection, model=scripted_model)
 
     by_id = {row["id"]: row for row in finished}
     assert by_id[stolen]["status"] == "escalated"
     assert by_id[stolen]["decision"] == "escalate"
     assert by_id[tablet]["status"] == "escalated"
     assert by_id[tablet]["decision"] == "escalate"
-    reasons = [row["reason"] for row in list_reviews(connection)]
-    assert len(reasons) == 2
-    assert all(reasons)
+    entries, _corrupt = read_entries(log_path(connection))
+    reasons = sorted(entry["reason"] for entry in entries)
+    assert reasons == ["borderline_cadence", "invalid_input"]
 
 
 def test_bad_reply_is_queued_once_then_escalated(tmp_path: Path) -> None:
@@ -54,10 +56,10 @@ def test_bad_reply_is_queued_once_then_escalated(tmp_path: Path) -> None:
         "content hash does not match the package; "
         "content hash does not match the package"
     )
-    reviews = list_reviews(connection)
-    assert len(reviews) == 1
-    assert reviews[0]["reason"] == "reply failed validation twice"
-    assert reviews[0]["package_hash"] == digest
+    entries, _corrupt = read_entries(log_path(connection))
+    assert len(entries) == 1
+    assert entries[0]["reason"] == "agent_stuck"
+    assert entries[0]["ticket_id"].startswith("RVW-")
     details = [row["detail"] for row in list_audit_log(connection, request_id)]
     assert details.count("content hash does not match the package") == 1
     assert "reply failed validation twice" in details

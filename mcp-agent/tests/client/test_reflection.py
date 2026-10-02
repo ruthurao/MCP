@@ -5,6 +5,7 @@ from pathlib import Path
 from client.intake import open_database, submit
 from client.reflection import reflect
 from client.worker import run
+from tests.client.scripted_model import scripted_model
 from server.context import build_package
 from store.repository import get_request
 
@@ -13,7 +14,7 @@ def test_reflection_confirms_a_draft_that_stays_inside_the_package(tmp_path: Pat
     connection = open_database(tmp_path / "equipment.db")
     request_id = submit(connection, "E1003: I need a laptop for my desk.")
 
-    finished = run(connection)
+    finished = run(connection, model=scripted_model)
     stored = get_request(connection, request_id)
 
     assert finished[0]["status"] == "approved"

@@ -28,6 +28,7 @@ def test_seed_has_the_employees_and_not_the_missing_id(tmp_path: Path) -> None:
         "E1007",
         "E1008",
         "E1009",
+        "E1010",
     ]
     assert employees["E1001"]["name"] == "Priya Shah"
     assert employees["E1001"]["role"] == "ic"
@@ -47,6 +48,8 @@ def test_seed_has_the_employees_and_not_the_missing_id(tmp_path: Path) -> None:
     assert employees["E1008"]["role"] == "manager"
     assert employees["E1009"]["name"] == "Lila Hassan"
     assert employees["E1009"]["role"] == "ic"
+    assert employees["E1010"]["name"] == "Riley Chen"
+    assert employees["E1010"]["role"] == "executive"
     assert (
         connection.execute(
             "SELECT COUNT(*) AS count FROM employees WHERE employee_id = ?",
@@ -103,7 +106,7 @@ def test_seed_equipment_and_current_policy(tmp_path: Path) -> None:
 
     assert (
         connection.execute("SELECT COUNT(*) AS count FROM policies").fetchone()["count"]
-        == 12
+        == 17
     )
     stale = connection.execute(
         """

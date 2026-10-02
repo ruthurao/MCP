@@ -15,5 +15,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install "mcp>=2,<3" pytest
+      - run: pip install "mcp>=2,<3" pytest ruff
       - run: python -m pytest
+      - run: ruff check server client store scripts tests

@@ -1,11 +1,13 @@
 """A sentence is queued, then one worker marks it running and records the lookup."""
 
 import json
+from datetime import date
 from pathlib import Path
 
 from client.intake import open_database, parse_sentence, submit
 from client.worker import run
 from store.repository import get_request, list_audit_log
+from tests.client.scripted_model import scripted_model
 
 
 def test_parse_catalog_item_and_free_text() -> None:
@@ -15,6 +17,8 @@ def test_parse_catalog_item_and_free_text() -> None:
         "I need a laptop for my desk.",
     )
     assert parse_sentence("E1001: I want a bigger second monitor.")[1] == "monitor"
+    assert parse_sentence("E1009: I need a dock.")[1] == "docking_station"
+    assert parse_sentence("E1004: I need headphones.")[1] == "headset"
     assert parse_sentence("E1002: My laptop was stolen. I need a replacement.")[1] == "laptop"
     tablet = "E1003: I need a drawing tablet for design work."
     assert parse_sentence(tablet) == (
@@ -34,8 +38,8 @@ def test_sentence_is_queued_then_one_worker_claims_it(tmp_path: Path) -> None:
     assert queued["item"] == "laptop"
     assert queued["submitted_on"] == "2026-09-30"
 
-    claimed = run(connection)
-    again = run(connection)
+    claimed = run(connection, model=scripted_model)
+    again = run(connection, model=scripted_model)
 
     assert [row["id"] for row in claimed] == [request_id]
     assert claimed[0]["status"] == "approved"
@@ -48,7 +52,7 @@ def test_worker_claims_the_oldest_row_first(tmp_path: Path) -> None:
     first = submit(connection, "E1003: I need a laptop for my desk.")
     second = submit(connection, "E1001: I want a bigger second monitor.")
 
-    claimed = run(connection)
+    claimed = run(connection, model=scripted_model)
 
     assert [row["id"] for row in claimed] == [first, second]
     assert [row["status"] for row in claimed] == ["approved", "denied"]
@@ -58,7 +62,7 @@ def test_worker_records_the_real_employee_observation(tmp_path: Path) -> None:
     connection = open_database(tmp_path / "equipment.db")
     request_id = submit(connection, "E1003: I need a laptop for my desk.")
 
-    claimed = run(connection)
+    claimed = run(connection, model=scripted_model)
     stored = get_request(connection, request_id)
     trace = stored["trace"]
     observation_line = next(
@@ -75,9 +79,10 @@ def test_worker_records_the_real_employee_observation(tmp_path: Path) -> None:
     assert observation == {
         "found": True,
         "employee_id": "E1003",
+        "name": "Alex Kim",
         "role": "ic",
         "start_date": "2024-08-01",
-        "tenure": "2 years",
+        "tenure_days": (date(2026, 9, 30) - date(2024, 8, 1)).days,
         "equipment": [],
     }
     assert "get_employee_info" in [

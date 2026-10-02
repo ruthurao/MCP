@@ -6,6 +6,8 @@ import sqlite3
 from datetime import date
 
 from server.context import build_package
+from server.policy import check_eligibility
+from server.reviews import append_review
 from store import repository
 
 _ACTOR = "service"
@@ -27,9 +29,10 @@ def get_employee_info(
         {
             "found": True,
             "employee_id": subject["employee_id"],
+            "name": subject["name"],
             "role": subject["role"],
             "start_date": subject["start_date"],
-            "tenure": _tenure(subject["start_date"], request["submitted_on"]),
+            "tenure_days": _tenure_days(subject["start_date"], request["submitted_on"]),
             "equipment": equipment,
         }
         if found
@@ -47,16 +50,15 @@ def get_employee_info(
 def get_policy_limits(connection: sqlite3.Connection, request_id: int, role: str) -> dict:
     package = build_package(connection, request_id)
     subject = _included_employee(package)
-    limits = [
-        {
-            "item": fact["item"],
+    limits = {
+        fact["item"]: {
             "max_count": fact["max_count"],
             "refresh_years": fact["refresh_years"],
             "memory_id": fact["memory_id"],
         }
         for fact in package["included"]
         if fact["kind"] == "policy" and fact["role"] == role
-    ]
+    }
     found = subject is not None and subject["role"] == role and bool(limits)
     result = {"found": True, "role": role, "limits": limits} if found else {"found": False}
     _audit(
@@ -69,16 +71,24 @@ def get_policy_limits(connection: sqlite3.Connection, request_id: int, role: str
 
 
 def check_request_eligibility(
-    connection: sqlite3.Connection, request_id: int, employee_id: str, item: str
+    connection: sqlite3.Connection,
+    request_id: int,
+    employee_id: str,
+    item: str,
+    request_text: str | None = None,
 ) -> dict:
     package = build_package(connection, request_id)
     request = repository.get_request(connection, request_id)
-    result = _eligibility(package, request["submitted_on"], employee_id, item)
+    text = request["reason"] if not request_text else request_text
+    result = _eligibility(package, request["submitted_on"], employee_id, item, text)
     _audit(
         connection,
         request_id,
         "check_request_eligibility",
-        f"employee_id={employee_id} item={item} status={result['status']}",
+        (
+            f"employee_id={employee_id} item={item} "
+            f"status={result['status']} reason_code={result['reason_code']}"
+        ),
     )
     return result
 
@@ -90,87 +100,70 @@ def flag_for_human_review(
     request_text: str,
     reason: str,
 ) -> dict:
-    package = build_package(connection, request_id)
-    if reason is None or not reason.strip():
+    build_package(connection, request_id)
+    if reason is None or not str(reason).strip():
         _audit(
             connection,
             request_id,
             "flag_for_human_review",
             "rejected empty reason",
         )
-        return {"ok": False, "error": "reason is required"}
-    review_id = repository.insert_review(
-        connection,
-        employee_id=employee_id,
-        request=request_text,
-        reason=reason.strip(),
-        package_hash=package["content_hash"],
-    )
+        return {"ok": False, "error": "reason is required", "ticket_id": None, "duplicate": False}
+    result = append_review(connection, employee_id, request_text, reason.strip())
+    if not result["ok"]:
+        _audit(
+            connection,
+            request_id,
+            "flag_for_human_review",
+            f"rejected reason {reason.strip()}",
+        )
+        return result
     _audit(
         connection,
         request_id,
         "flag_for_human_review",
-        f"review_id={review_id}",
+        f"ticket_id={result['ticket_id']} duplicate={result['duplicate']}",
     )
-    return {"ok": True, "review_id": review_id}
+    return result
 
 
 def _eligibility(
-    package: dict, submitted_on: str, employee_id: str, item: str
+    package: dict,
+    submitted_on: str,
+    employee_id: str,
+    item: str,
+    request_text: str,
 ) -> dict:
     subject = _included_employee(package)
-    if subject is None or subject["employee_id"] != employee_id:
-        return {
-            "status": "unknown",
-            "rule_id": None,
-            "detail": "Employee is not in the package.",
-        }
-    if package["conflict"]:
-        return {
-            "status": "unknown",
-            "rule_id": None,
-            "detail": "Two current rules conflict for this item.",
+    equipment = [
+        {"item": fact["item"], "issued_on": fact["issued_on"]}
+        for fact in package["included"]
+        if fact["kind"] == "equipment"
+    ]
+    employee = None
+    if subject is not None:
+        employee = {
+            "employee_id": subject["employee_id"],
+            "name": subject["name"],
+            "role": subject["role"],
+            "start_date": subject["start_date"],
+            "equipment": equipment,
         }
     policies = [
         fact
         for fact in package["included"]
         if fact["kind"] == "policy" and fact["item"] == item
     ]
-    if not policies:
-        return {
-            "status": "unknown",
-            "rule_id": None,
-            "detail": "Item is not in the catalog.",
-        }
-    policy = policies[0]
-    owned = [
-        fact
-        for fact in package["included"]
-        if fact["kind"] == "equipment" and fact["item"] == item
-    ]
-    if len(owned) < policy["max_count"]:
-        return {
-            "status": "eligible",
-            "rule_id": policy["memory_id"],
-            "detail": f"Count is {len(owned)} of {policy['max_count']}.",
-        }
-    newest = max(fact["issued_on"] for fact in owned)
-    next_eligible = _add_years(newest, policy["refresh_years"])
-    if submitted_on >= next_eligible:
-        return {
-            "status": "eligible",
-            "rule_id": policy["memory_id"],
-            "detail": f"Refresh window is open. Next eligible was {next_eligible}.",
-        }
-    return {
-        "status": "ineligible",
-        "rule_id": policy["memory_id"],
-        "detail": (
-            f"Newest {item} is inside the {policy['refresh_years']}-year window. "
-            f"Next eligible {next_eligible}."
-        ),
-        "next_eligible_on": next_eligible,
-    }
+    policy = policies[0] if policies else None
+    return check_eligibility(
+        employee_id,
+        item,
+        request_text,
+        as_of=date.fromisoformat(submitted_on),
+        employee=employee,
+        policy=policy,
+        conflict=bool(package["conflict"]),
+    )
 
 
 def _included_employee(package: dict) -> dict | None:
@@ -180,24 +173,8 @@ def _included_employee(package: dict) -> dict | None:
     return None
 
 
-def _tenure(start: str, on: str) -> str:
-    start_year, start_month, start_day = (int(part) for part in start.split("-"))
-    on_year, on_month, on_day = (int(part) for part in on.split("-"))
-    years = on_year - start_year
-    if (on_month, on_day) < (start_month, start_day):
-        years -= 1
-    if years < 0:
-        years = 0
-    unit = "year" if years == 1 else "years"
-    return f"{years} {unit}"
-
-
-def _add_years(iso_date: str, years: int) -> str:
-    year, month, day = (int(part) for part in iso_date.split("-"))
-    try:
-        return date(year + years, month, day).isoformat()
-    except ValueError:
-        return date(year + years, month, 28).isoformat()
+def _tenure_days(start: str, on: str) -> int:
+    return (date.fromisoformat(on) - date.fromisoformat(start)).days
 
 
 def _audit(connection: sqlite3.Connection, request_id: int, action: str, detail: str) -> None:

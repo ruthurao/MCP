@@ -12,6 +12,7 @@ _EMPLOYEES = (
     ("E1007", "Mina Cho", "ic", "2020-09-01"),
     ("E1008", "Owen Garcia", "manager", "2017-04-01"),
     ("E1009", "Lila Hassan", "ic", "2021-11-01"),
+    ("E1010", "Riley Chen", "executive", "2016-01-04"),
 )
 
 _EQUIPMENT = (
@@ -27,7 +28,8 @@ _EQUIPMENT = (
     ("E1007", "keyboard", "2025-01-15"),
     ("E1008", "laptop", "2024-01-15"),
     ("E1009", "headset", "2025-03-01"),
-    ("E1009", "dock", "2023-09-30"),
+    ("E1009", "docking_station", "2023-09-30"),
+    ("E1010", "laptop", "2025-06-01"),
 )
 
 _POLICIES = (
@@ -35,12 +37,17 @@ _POLICIES = (
     ("ic", "monitor", 1, 3),
     ("ic", "keyboard", 1, 3),
     ("ic", "headset", 1, 3),
-    ("ic", "dock", 1, 3),
+    ("ic", "docking_station", 1, 3),
     ("manager", "laptop", 1, 2),
     ("manager", "monitor", 2, 3),
     ("manager", "keyboard", 1, 3),
     ("manager", "headset", 1, 3),
-    ("manager", "dock", 1, 3),
+    ("manager", "docking_station", 1, 3),
+    ("executive", "laptop", 1, 2),
+    ("executive", "monitor", 2, 2),
+    ("executive", "keyboard", 1, 2),
+    ("executive", "headset", 1, 2),
+    ("executive", "docking_station", 1, 2),
 )
 
 _EFFECTIVE_FROM = "2020-01-01"

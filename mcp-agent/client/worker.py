@@ -9,11 +9,11 @@ from client.agent import react
 from client.decisions import expected_decision
 from client.reflection import reflect
 from server.context import build_package
+from server.reviews import ticket_on_file
 from server.service import check_request_eligibility, flag_for_human_review
 from store.repository import (
     claim_next,
     get_request,
-    get_review,
     insert_audit,
     update_request,
 )
@@ -25,8 +25,11 @@ _ACTOR = "worker"
 def run(
     connection: sqlite3.Connection,
     propose: Callable[[str, sqlite3.Row], tuple[str, dict]] | None = None,
+    model: Callable[..., str] | None = None,
 ) -> list[sqlite3.Row]:
-    propose = propose or react
+    if propose is None:
+        def propose(db_path: str, row: sqlite3.Row) -> tuple[str, dict]:
+            return react(db_path, row, model=model)
     finished: list[sqlite3.Row] = []
     while True:
         row = claim_next(connection)
@@ -75,12 +78,15 @@ def _validate(
     eligibility = check_request_eligibility(
         connection, row["id"], row["employee_id"], row["item"]
     )
-    if decision != expected_decision(eligibility["status"], row["reason"]):
+    reason_code = proposal.get("reason_code")
+    if not isinstance(reason_code, str):
+        reason_code = ""
+    if decision != expected_decision(eligibility["status"], reason_code):
         return "decision does not match eligibility"
     if decision == "escalate":
-        review_id = proposal.get("review_id")
-        if not isinstance(review_id, int) or get_review(connection, review_id) is None:
-            return "escalate requires a review id"
+        ticket_id = proposal.get("ticket_id")
+        if not isinstance(ticket_id, str) or not ticket_on_file(connection, ticket_id):
+            return "escalate requires a review ticket"
     return None
 
 
@@ -145,7 +151,7 @@ def _escalate_twice(
         row["id"],
         row["employee_id"],
         row["reason"],
-        "reply failed validation twice",
+        "agent_stuck",
     )
     update_request(
         connection,

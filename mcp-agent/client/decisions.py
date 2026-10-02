@@ -1,24 +1,13 @@
-"""Map eligibility and the request reason to approve, deny, or escalate."""
+"""Map a tool status to approve, deny, or escalate."""
 
-_EXCEPTIONS = (
-    "stolen",
-    "broken",
-    "cracked",
-    "accessibility",
-    "medical",
-    "accommodation",
-    "role change",
-)
+_OVERRIDE = {"draft_unverified", "agent_stuck"}
 
 
-def has_exception(reason: str) -> bool:
-    text = reason.lower()
-    return any(word in text for word in _EXCEPTIONS)
-
-
-def expected_decision(eligibility: str, reason: str) -> str:
+def expected_decision(eligibility: str, reason_code: str = "") -> str:
+    if reason_code in _OVERRIDE:
+        return "escalate"
     if eligibility == "eligible":
         return "approve"
-    if eligibility == "ineligible" and not has_exception(reason):
+    if eligibility == "ineligible":
         return "deny"
     return "escalate"

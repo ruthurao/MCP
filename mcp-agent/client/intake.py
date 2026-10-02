@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import re
 import sqlite3
 from pathlib import Path
 
+from server.policy import classify_items
 from store.db import connect, create_schema
 from store.repository import insert_request
 from store.seed import seed
 
-CATALOG = ("laptop", "monitor", "keyboard", "headset", "dock")
 DEMO_DATE = "2026-09-30"
 
 
@@ -50,11 +49,7 @@ def submit(
 
 
 def _item(reason: str) -> str:
-    earliest: tuple[int, str] | None = None
-    for name in CATALOG:
-        match = re.search(rf"\b{name}\b", reason.lower())
-        if match is not None and (earliest is None or match.start() < earliest[0]):
-            earliest = (match.start(), name)
-    if earliest is None:
+    found = classify_items(reason)
+    if not found:
         return reason
-    return earliest[1]
+    return found[0]

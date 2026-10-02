@@ -16,15 +16,22 @@ sys.path = [
 sys.path.insert(0, str(ROOT))
 
 from client.intake import open_database
+from client.planner import deterministic
 from client.worker import run
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Claim every queued request.")
     parser.add_argument("--db", required=True)
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="Choose each step from the scratchpad instead of the model.",
+    )
     args = parser.parse_args(argv)
     connection = open_database(args.db)
-    claimed = run(connection)
+    propose = deterministic if args.deterministic else None
+    claimed = run(connection, propose=propose)
     if not claimed:
         print("queue empty")
         return
