@@ -30,8 +30,14 @@ Seed these people. `E9999` is not on file.
 | E1001 | Priya Shah | ic | 2021-03-01 | Laptop 2021-04-01. Monitor 2024-11-01 |
 | E1002 | Jordan Lee | manager | 2019-01-15 | Laptop 2025-02-01. Monitors 2023-01-10 and 2024-06-01 |
 | E1003 | Alex Kim | ic | 2024-08-01 | None |
+| E1004 | Nora Patel | ic | 2022-05-01 | Monitor 2023-09-30. On 2026-09-30 the 3-year window opens that day |
+| E1005 | Chris Adeyemi | ic | 2019-02-01 | Monitor 2024-02-29. Next eligible 2027-02-28 |
+| E1006 | Taylor Brooks | manager | 2018-06-01 | One monitor, 2024-08-01. Count is 1 of 2, so the issue date does not matter |
+| E1007 | Mina Cho | ic | 2020-09-01 | Laptop 2022-09-30, eligible that day in 2026. Keyboard 2025-01-15, next eligible 2028-01-15 |
+| E1008 | Owen Garcia | manager | 2017-04-01 | Laptop 2024-01-15, 2-year window already open. No monitors, so count is 0 of 2 |
+| E1009 | Lila Hassan | ic | 2021-11-01 | Headset 2025-03-01, next eligible 2028-03-01. Dock 2023-09-30, eligible on the request date |
 
-Each policy row has `effective_from` and `effective_to`. The seed has one current row per role and item. A current row has no `effective_to`, or an `effective_to` on or after the request date.
+Each policy row has `effective_from` and `effective_to`. The seed has one current row per role and item, plus two expired rows: an ic monitor max of 2 that ended 2025-09-30, and an ic laptop max of 2 that ended 2024-12-31. A current row has no `effective_to`, or an `effective_to` on or after the request date.
 
 | Role | Item | Max on file | Refresh |
 | --- | --- | --- | --- |
