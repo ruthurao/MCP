@@ -10,11 +10,14 @@ import sys
 import time
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from mcp import Client
 from mcp.types import PromptReference
 
-from server.mcp import stdio_parameters
+from server import mcp as mcp_module
+from server.mcp import _employee_ids, _matches, _roles, stdio_parameters
 from store.db import connect, create_schema
 from store.repository import insert_request, list_audit_log
 from store.seed import seed
@@ -146,6 +149,139 @@ def test_completions_offer_ids_items_and_roles(tmp_path: Path) -> None:
     assert employees.completion.values == ["E1001"]
     assert items.completion.values == ["headset"]
     assert roles.completion.values == ["executive"]
+
+
+def test_registered_tools_run_in_process_and_report_results(tmp_path: Path) -> None:
+    db_path, request_id = _database(tmp_path)
+    server = mcp_module.build_server(str(db_path), request_id)
+    messages: list[tuple[str, str]] = []
+
+    class Context:
+        async def info(self, message: str) -> None:
+            messages.append(("info", message))
+
+        async def error(self, message: str) -> None:
+            messages.append(("error", message))
+
+    async def call_tools():
+        tools = server._tool_manager
+        employee = await tools.get_tool("get_employee_info").fn(
+            employee_id="E1001", ctx=Context()
+        )
+        limits = await tools.get_tool("get_policy_limits").fn(role="ic", ctx=Context())
+        eligibility = await tools.get_tool("check_request_eligibility").fn(
+            employee_id="E1001",
+            item="monitor",
+            ctx=Context(),
+            request_text="Please replace my monitor.",
+        )
+        review = await tools.get_tool("flag_for_human_review").fn(
+            employee_id="E1001",
+            request="Please replace my monitor.",
+            reason="exception_claimed",
+            ctx=Context(),
+        )
+        return employee, limits, eligibility, review
+
+    employee, limits, eligibility, review = asyncio.run(call_tools())
+
+    assert employee.found is True
+    assert limits.found is True
+    assert eligibility.status == "ineligible"
+    assert review.ok is True
+    assert review.ticket_id.startswith("RVW-")
+    assert len([entry for entry in messages if entry[0] == "info"]) == 4
+
+
+def test_registered_tool_logs_and_reraises_operation_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path, request_id = _database(tmp_path)
+    server = mcp_module.build_server(str(db_path), request_id)
+    errors: list[str] = []
+
+    class Context:
+        async def error(self, message: str) -> None:
+            errors.append(message)
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("service unavailable")
+
+    monkeypatch.setattr(mcp_module.service, "get_employee_info", fail)
+    tool = server._tool_manager.get_tool("get_employee_info")
+
+    with pytest.raises(RuntimeError, match="service unavailable"):
+        asyncio.run(tool.fn(employee_id="E1001", ctx=Context()))
+
+    assert errors == ["get_employee_info failed: service unavailable"]
+
+
+def test_registered_resources_and_prompts_run_in_process(tmp_path: Path) -> None:
+    db_path, request_id = _database(tmp_path)
+    server = mcp_module.build_server(str(db_path), request_id)
+    resources = server._resource_manager
+    prompts = server._prompt_manager
+
+    rules = resources._resources["policy://rules"].fn()
+    catalog = resources._resources["policy://catalog"].fn()
+    dossier = resources._templates["employee://{employee_id}"].fn("E1001")
+    queue = resources._resources["review://queue"].fn()
+    investigate = prompts._prompts["investigate_request"].fn(
+        employee_id="E1001", request_text="Please replace my monitor."
+    )
+    review = prompts._prompts["human_review_brief"].fn(
+        employee_id="E1001",
+        request_text="Please replace my monitor.",
+        reason_code="exception_claimed",
+    )
+    reflection = prompts._prompts["reflect_on_draft"].fn(draft="Decision: Deny")
+
+    assert "within_policy" in rules
+    assert "monitor" in catalog
+    assert "Priya Shah" in dossier
+    assert isinstance(queue, str)
+    assert "E1001" in investigate
+    assert "exception_claimed" in review
+    assert "Decision: Deny" in reflection
+
+
+def test_completion_helpers_and_main_transport_branches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path, _request_id = _database(tmp_path)
+    assert _employee_ids(str(db_path))[0] == "E1001"
+    assert _roles(str(db_path)) == ["executive", "ic", "manager"]
+    assert _matches(["Laptop", "monitor"], "la") == ["Laptop"]
+
+    connection = connect(tmp_path / "empty.db")
+    create_schema(connection)
+    connection.close()
+    assert _roles(str(tmp_path / "empty.db")) == ["ic", "manager", "executive"]
+
+    calls: list[dict] = []
+    fake_server = SimpleNamespace(run=lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setattr(mcp_module, "build_server", lambda *_args: fake_server)
+    monkeypatch.setenv("EQUIPMENT_DB", str(db_path))
+    monkeypatch.setenv("EQUIPMENT_REQUEST_ID", "1")
+
+    monkeypatch.setenv("EQUIPMENT_TRANSPORT", "stdio")
+    mcp_module.main()
+    monkeypatch.setenv("EQUIPMENT_TRANSPORT", "streamable-http")
+    monkeypatch.setenv("EQUIPMENT_HTTP_PORT", "8123")
+    mcp_module.main()
+
+    assert calls == [
+        {"transport": "stdio"},
+        {"transport": "streamable-http", "host": "127.0.0.1", "port": 8123},
+    ]
+
+    monkeypatch.setenv("EQUIPMENT_TRANSPORT", "invalid")
+    with pytest.raises(SystemExit, match="Unknown EQUIPMENT_TRANSPORT: invalid"):
+        mcp_module.main()
+
+    monkeypatch.delenv("EQUIPMENT_DB")
+    with pytest.raises(SystemExit, match="EQUIPMENT_DB and EQUIPMENT_REQUEST_ID are required"):
+        mcp_module.main()
 
 
 def _free_port() -> int:
