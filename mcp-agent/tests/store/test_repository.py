@@ -26,7 +26,9 @@ def test_known_employee_id(tmp_path: Path) -> None:
     equipment = list_equipment(connection, "E1001")
     assert [row["item"] for row in equipment] == ["laptop", "monitor"]
     policies = list_policies(connection, "ic")
-    monitor = next(row for row in policies if row["item"] == "monitor")
+    monitor = next(
+        row for row in policies if row["item"] == "monitor" and row["effective_to"] is None
+    )
     assert monitor["max_count"] == 1
     assert monitor["refresh_years"] == 3
 

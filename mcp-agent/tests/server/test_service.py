@@ -110,6 +110,108 @@ def test_conflicting_rules_are_unknown(tmp_path: Path) -> None:
     assert eligibility["rule_id"] is None
 
 
+def test_seeded_edge_cases(tmp_path: Path) -> None:
+    connection, boundary_id = _request(tmp_path, "E1004", "monitor", "Refresh day.")
+    leap_id = insert_request(
+        connection,
+        employee_id="E1005",
+        item="monitor",
+        reason="Leap day monitor.",
+        submitted_on="2026-09-30",
+    )
+    under_cap_id = insert_request(
+        connection,
+        employee_id="E1006",
+        item="monitor",
+        reason="One monitor, cap is two.",
+        submitted_on="2026-09-30",
+    )
+    priya_id = insert_request(
+        connection,
+        employee_id="E1001",
+        item="monitor",
+        reason="Stale higher cap is in the seed.",
+        submitted_on="2026-09-30",
+    )
+
+    assert check_request_eligibility(connection, boundary_id, "E1004", "monitor")["detail"] == (
+        "Refresh window is open. Next eligible was 2026-09-30."
+    )
+    leap_result = check_request_eligibility(connection, leap_id, "E1005", "monitor")
+    assert leap_result["status"] == "ineligible"
+    assert leap_result["next_eligible_on"] == "2027-02-28"
+    assert check_request_eligibility(connection, under_cap_id, "E1006", "monitor")["detail"] == (
+        "Count is 1 of 2."
+    )
+    priya_result = check_request_eligibility(connection, priya_id, "E1001", "monitor")
+    assert priya_result["status"] == "ineligible"
+    assert priya_result["next_eligible_on"] == "2027-11-01"
+
+    mina_laptop = insert_request(
+        connection,
+        employee_id="E1007",
+        item="laptop",
+        reason="Laptop refresh day.",
+        submitted_on="2026-09-30",
+    )
+    mina_keyboard = insert_request(
+        connection,
+        employee_id="E1007",
+        item="keyboard",
+        reason="Recent keyboard.",
+        submitted_on="2026-09-30",
+    )
+    owen_laptop = insert_request(
+        connection,
+        employee_id="E1008",
+        item="laptop",
+        reason="Manager laptop refresh.",
+        submitted_on="2026-09-30",
+    )
+    owen_monitor = insert_request(
+        connection,
+        employee_id="E1008",
+        item="monitor",
+        reason="No monitors yet.",
+        submitted_on="2026-09-30",
+    )
+    lila_headset = insert_request(
+        connection,
+        employee_id="E1009",
+        item="headset",
+        reason="Recent headset.",
+        submitted_on="2026-09-30",
+    )
+    lila_dock = insert_request(
+        connection,
+        employee_id="E1009",
+        item="dock",
+        reason="Dock refresh day.",
+        submitted_on="2026-09-30",
+    )
+
+    assert check_request_eligibility(connection, mina_laptop, "E1007", "laptop")["detail"] == (
+        "Refresh window is open. Next eligible was 2026-09-30."
+    )
+    mina_keyboard_result = check_request_eligibility(
+        connection, mina_keyboard, "E1007", "keyboard"
+    )
+    assert mina_keyboard_result["next_eligible_on"] == "2028-01-15"
+    assert check_request_eligibility(connection, owen_laptop, "E1008", "laptop")["detail"] == (
+        "Refresh window is open. Next eligible was 2026-01-15."
+    )
+    assert check_request_eligibility(connection, owen_monitor, "E1008", "monitor")["detail"] == (
+        "Count is 0 of 2."
+    )
+    lila_headset_result = check_request_eligibility(
+        connection, lila_headset, "E1009", "headset"
+    )
+    assert lila_headset_result["next_eligible_on"] == "2028-03-01"
+    assert check_request_eligibility(connection, lila_dock, "E1009", "dock")["detail"] == (
+        "Refresh window is open. Next eligible was 2026-09-30."
+    )
+
+
 def test_empty_escalation_reason_writes_no_review(tmp_path: Path) -> None:
     connection, request_id = _request(
         tmp_path, "E1002", "laptop", "My laptop was stolen. I need a replacement."

@@ -1,4 +1,4 @@
-"""A temporary database contains the three seeded employees and not E9999."""
+"""The seeded company, including the extra cases, and not E9999."""
 
 from pathlib import Path
 
@@ -6,7 +6,7 @@ from store.db import connect, create_schema
 from store.seed import seed
 
 
-def test_seed_has_the_three_employees_and_not_the_missing_id(tmp_path: Path) -> None:
+def test_seed_has_the_employees_and_not_the_missing_id(tmp_path: Path) -> None:
     connection = connect(tmp_path / "equipment.db")
     create_schema(connection)
     seed(connection)
@@ -18,7 +18,17 @@ def test_seed_has_the_three_employees_and_not_the_missing_id(tmp_path: Path) -> 
         )
     }
 
-    assert list(employees) == ["E1001", "E1002", "E1003"]
+    assert list(employees) == [
+        "E1001",
+        "E1002",
+        "E1003",
+        "E1004",
+        "E1005",
+        "E1006",
+        "E1007",
+        "E1008",
+        "E1009",
+    ]
     assert employees["E1001"]["name"] == "Priya Shah"
     assert employees["E1001"]["role"] == "ic"
     assert employees["E1001"]["start_date"] == "2021-03-01"
@@ -26,6 +36,17 @@ def test_seed_has_the_three_employees_and_not_the_missing_id(tmp_path: Path) -> 
     assert employees["E1002"]["role"] == "manager"
     assert employees["E1003"]["name"] == "Alex Kim"
     assert employees["E1003"]["role"] == "ic"
+    assert employees["E1004"]["name"] == "Nora Patel"
+    assert employees["E1004"]["role"] == "ic"
+    assert employees["E1005"]["name"] == "Chris Adeyemi"
+    assert employees["E1006"]["name"] == "Taylor Brooks"
+    assert employees["E1006"]["role"] == "manager"
+    assert employees["E1007"]["name"] == "Mina Cho"
+    assert employees["E1007"]["role"] == "ic"
+    assert employees["E1008"]["name"] == "Owen Garcia"
+    assert employees["E1008"]["role"] == "manager"
+    assert employees["E1009"]["name"] == "Lila Hassan"
+    assert employees["E1009"]["role"] == "ic"
     assert (
         connection.execute(
             "SELECT COUNT(*) AS count FROM employees WHERE employee_id = ?",
@@ -62,7 +83,7 @@ def test_seed_equipment_and_current_policy(tmp_path: Path) -> None:
         """
         SELECT max_count, refresh_years, effective_to
         FROM policies
-        WHERE role = ? AND item = ?
+        WHERE role = ? AND item = ? AND effective_to IS NULL
         """,
         ("ic", "monitor"),
     ).fetchone()
@@ -82,8 +103,20 @@ def test_seed_equipment_and_current_policy(tmp_path: Path) -> None:
 
     assert (
         connection.execute("SELECT COUNT(*) AS count FROM policies").fetchone()["count"]
-        == 10
+        == 12
     )
+    stale = connection.execute(
+        """
+        SELECT role, item, max_count, effective_to
+        FROM policies
+        WHERE effective_to IS NOT NULL
+        ORDER BY item
+        """
+    ).fetchall()
+    assert [(row["role"], row["item"], row["max_count"], row["effective_to"]) for row in stale] == [
+        ("ic", "laptop", 2, "2024-12-31"),
+        ("ic", "monitor", 2, "2025-09-30"),
+    ]
     assert (
         connection.execute("SELECT COUNT(*) AS count FROM requests").fetchone()["count"]
         == 0
